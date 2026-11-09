@@ -1,0 +1,86 @@
+﻿@model RaceDayMVC.Models.EventViewModel
+
+@{
+    ViewData["Title"] = "Edit Event";
+}
+
+<div class="container mt-5" style="max-width:700px;">
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h2 class="mb-0">Edit Event</h2>
+        </div>
+
+        <div class="card-body">
+
+            <form action="/Events/Edit" method="post">
+                @Html.AntiForgeryToken()
+
+                <input type="hidden" name="EventID" value="@Model.EventID" />
+
+                <div asp-validation-summary="All" class="alert alert-danger"></div>
+
+                <div class="mb-3">
+                    <label class="form-label">Event Name</label>
+                    <input type="text"
+                           name="Name"
+                           value="@Model.Name"
+                           class="form-control"
+                           required />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea name="Description"
+                              class="form-control"
+                              rows="4"
+                              required>@Model.Description</textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Event Date</label>
+                    <input type="datetime-local"
+                           name="EventDate"
+                           value="@Model.EventDate.ToString("yyyy-MM-ddTHH:mm")"
+                           class="form-control"
+                           required />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Location</label>
+                    <input type="text"
+                           name="Location"
+                           value="@Model.Location"
+                           class="form-control"
+                           required />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Distance (km)</label>
+                    <input type="number"
+                           name="Distance"
+                           step="0.01"
+                           value="@Model.Distance.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                           class="form-control"
+                           required />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Event Type</label>
+                    <select name="EventType" class="form-select" required>
+                        <option value="Run" selected="@(Model.EventType == "Run")">Run</option>
+                        <option value="Walk" selected="@(Model.EventType == "Walk")">Walk</option>
+                        <option value="Cycle" selected="@(Model.EventType == "Cycle")">Cycle</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Save Changes
+                </button>
+
+                <a href="/Events/Index" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,47 @@
+﻿<div class="container mt-5">
+    <h2>Organiser Dashboard</h2>
+    <p>Welcome, @ViewBag.FirstName!</p>
+
+    <div class="row mt-4">
+
+        <div class="col-md-6 mb-3">
+            <a href="/Events/Index" class="btn btn-primary w-100">
+                Manage Events
+            </a>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <a href="/Results/Create" class="btn btn-success w-100">
+                Record Results
+            </a>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <a href="/Events/Index" class="btn btn-info w-100">
+                View Events
+            </a>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <a href="/Auth/Logout" class="btn btn-danger w-100">
+                Logout
+            </a>
+        </div>
+
+    </div>
+
+    <hr />
+
+    <h4>Upload Profile Picture</h4>
+
+    <form action="/Uploads/ProfilePicture"
+          method="post"
+          enctype="multipart/form-data">
+
+        <input type="file" name="file" accept="image/*" required />
+
+        <button type="submit" class="btn btn-dark mt-2">
+            Upload Picture
+        </button>
+    </form>
+</div>

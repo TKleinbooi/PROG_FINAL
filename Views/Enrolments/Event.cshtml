@@ -1,0 +1,39 @@
+﻿@model List<RaceDayMVC.Controllers.EventEnrolment>
+
+<div class="container mt-5">
+    <h2>Event Enrolments</h2>
+
+    <p>Event ID: @ViewBag.EventID</p>
+
+    @if (Model == null || !Model.Any())
+    {
+        <p>No participants have enrolled in this event yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Participant</th>
+                        <th>Category</th>
+                        <th>Enrolment Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model)
+                    {
+                        <tr>
+                            <td>@item.Participant</td>
+                            <td>@item.CategoryName</td>
+                            <td>@item.EnrolmentDate.ToString("dd MMM yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <a asp-controller="Events" asp-action="Index"
+       class="btn btn-dark">Back to Events</a>
+</div>

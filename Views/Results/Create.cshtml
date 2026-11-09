@@ -1,0 +1,52 @@
+﻿@model RaceDayMVC.Models.ResultViewModel
+
+<div class="container mt-5" style="max-width:550px">
+    <h2>Record Race Result</h2>
+
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+
+        <div asp-validation-summary="All"
+             class="text-danger mb-3"></div>
+
+        <div class="mb-3">
+            <label asp-for="EnrolmentID">Enrolment ID</label>
+            <input asp-for="EnrolmentID"
+                   type="number"
+                   class="form-control"
+                   min="1" />
+            <span asp-validation-for="EnrolmentID"
+                  class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="FinishTime">Finish Time</label>
+            <input asp-for="FinishTime"
+                   type="text"
+                   class="form-control"
+                   placeholder="01:30:00" />
+            <span asp-validation-for="FinishTime"
+                  class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Position">Finishing Position</label>
+            <input asp-for="Position"
+                   type="number"
+                   class="form-control"
+                   min="1" />
+            <span asp-validation-for="Position"
+                  class="text-danger"></span>
+        </div>
+
+        <button type="submit" class="btn btn-dark">
+            Save Result
+        </button>
+
+        <a asp-controller="Organiser"
+           asp-action="Index"
+           class="btn btn-secondary">
+            Cancel
+        </a>
+    </form>
+</div>

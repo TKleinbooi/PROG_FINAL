@@ -1,0 +1,136 @@
+﻿@model List<RaceDayMVC.Controllers.EventItem>
+
+@{
+    var role = Context.Session.GetString("Role");
+    var isOrganiser = role == "Organiser";
+}
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>Race Events</h2>
+            <p class="text-muted">Manage and explore upcoming race events.</p>
+        </div>
+
+        @if (isOrganiser)
+        {
+            <a href="/Events/Create" class="btn btn-primary">
+                + Create Event
+            </a>
+        }
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">@TempData["Success"]</div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
+
+    @if (ViewBag.Error != null)
+    {
+        <div class="alert alert-danger">@ViewBag.Error</div>
+    }
+
+    @if (Model == null || !Model.Any())
+    {
+        <div class="alert alert-info">No race events are currently available.</div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var item in Model)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 shadow-sm">
+
+                        @if (!string.IsNullOrEmpty(item.BannerUrl))
+                        {
+                            <img src="@item.BannerUrl"
+                                 class="card-img-top"
+                                 style="height:180px; object-fit:cover;"
+                                 alt="Event banner" />
+                        }
+
+                        <div class="card-body">
+                            <h5 class="card-title">@item.Name</h5>
+                            <p class="card-text">@item.Description</p>
+                            <p><strong>Location:</strong> @item.Location</p>
+                            <p><strong>Date:</strong> @item.Date.ToString("dd MMM yyyy HH:mm")</p>
+                            <p><strong>Distance:</strong> @item.Distance km</p>
+                            <p><strong>Type:</strong> @item.EventType</p>
+                        </div>
+
+                        <div class="card-footer bg-white">
+                            @if (isOrganiser)
+                            {
+                                <div class="d-grid gap-2">
+
+                                    <a href="/Events/Edit/@item.EventID"
+                                       class="btn btn-primary">
+                                        Edit Event
+                                    </a>
+
+                                    <form action="/Events/Delete/@item.EventID"
+                                          method="post"
+                                          onsubmit="return confirm('Are you sure you want to delete this event?');">
+                                        @Html.AntiForgeryToken()
+
+                                        <input type="hidden"
+                                               name="id"
+                                               value="@item.EventID" />
+
+                                        <button type="submit" class="btn btn-danger w-100">
+                                            Delete Event
+                                        </button>
+                                    </form>
+
+                                    <form action="/Uploads/UploadEventBanner"
+                                          method="post"
+                                          enctype="multipart/form-data">
+                                        @Html.AntiForgeryToken()
+
+                                        <input type="hidden"
+                                               name="eventId"
+                                               value="@item.EventID" />
+
+                                        <input type="file"
+                                               name="file"
+                                               accept="image/png,image/jpeg,image/webp"
+                                               class="form-control mb-2"
+                                               required />
+
+                                        <button type="submit" class="btn btn-success w-100">
+                                            Upload Banner
+                                        </button>
+                                    </form>
+
+                                    <a href="/Enrolments/Event?eventId=@item.EventID"
+                                       class="btn btn-info">
+                                        View Enrolments
+                                    </a>
+                                </div>
+                            }
+                            else
+                            {
+                                <a href="/Enrolments/Create?eventId=@item.EventID"
+                                   class="btn btn-success w-100">
+                                    Enrol in Event
+                                </a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="mt-4">
+        <a href="/Home/Index" class="btn btn-secondary">
+            Back to Home
+        </a>
+    </div>
+</div>
