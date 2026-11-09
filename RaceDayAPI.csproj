@@ -4,9 +4,11 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>ff372dcd-b286-44e6-8978-b04968e7a2dd</UserSecretsId>
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Azure.Storage.Blobs.Batch" Version="12.27.1" />
 		<PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
 
@@ -24,8 +26,9 @@
 
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="8.0.0" />
 	</ItemGroup>
-<ItemGroup>
-  <Compile Remove="RaceDayApiFactory.cs" />
-  <Compile Remove="UnitTest1.cs" />
-</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="NewFolder\" />
+	</ItemGroup>
+
 </Project>
