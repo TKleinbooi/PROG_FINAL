@@ -1,118 +1,143 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using RaceDay.API.Data;
-using RaceDay.API.Models;
-using RaceDayAPI.DTOs;
-using System.Security.Claims;
+using RaceDayMVC.Models;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
-namespace RaceDayAPI.Controllers;
+namespace RaceDayMVC.Controllers;
 
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class EnrolmentsController : ControllerBase
+public class EnrolmentsController : Controller
 {
-    private readonly RaceDayContext _context;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public EnrolmentsController(RaceDayContext context)
+    public EnrolmentsController(IHttpClientFactory httpClientFactory)
     {
-        _context = context;
+        _httpClientFactory = httpClientFactory;
     }
 
-    private int CurrentUserID =>
-        int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-
-    [HttpPost]
-    [Authorize(Roles = "Participant")]
-    public async Task<IActionResult> Enrol(EnrolmentDto dto)
+    private HttpClient GetApiClient()
     {
-        var eventItem = await _context.Events
-            .SingleOrDefaultAsync(e => e.EventID == dto.EventID);
+        var client = _httpClientFactory.CreateClient("RaceDayApi");
+        var token = HttpContext.Session.GetString("JWT");
 
-        if (eventItem == null)
-            return NotFound("Event not found.");
-
-        if (eventItem.Date <= DateTime.UtcNow)
-            return BadRequest("This event is no longer accepting enrolments.");
-
-        var categoryExists = await _context.Categories
-            .AnyAsync(c => c.CategoryID == dto.CategoryID);
-
-        if (!categoryExists)
-            return BadRequest("Category not found.");
-
-        var duplicate = await _context.Enrolments.AnyAsync(e =>
-            e.UserID == CurrentUserID &&
-            e.EventID == dto.EventID);
-
-        if (duplicate)
-            return Conflict("You are already enrolled in this event.");
-
-        var enrolment = new Enrolment
+        if (!string.IsNullOrEmpty(token))
         {
-            UserID = CurrentUserID,
-            EventID = dto.EventID,
-            CategoryID = dto.CategoryID,
-            EnrolmentDate = DateTime.UtcNow
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return client;
+    }
+
+    // Participant enrolment form
+    public IActionResult Create(int eventId)
+    {
+        if (HttpContext.Session.GetString("Role") != "Participant")
+            return RedirectToAction("Login", "Auth");
+
+        return View(new EnrolmentViewModel
+        {
+            EventID = eventId
+        });
+    }
+
+    // Submit enrolment
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Create(EnrolmentViewModel model)
+    {
+        if (HttpContext.Session.GetString("Role") != "Participant")
+            return RedirectToAction("Login", "Auth");
+
+        if (!ModelState.IsValid)
+            return View(model);
+
+        var client = GetApiClient();
+
+        var payload = new
+        {
+            model.EventID,
+            model.CategoryID
         };
 
-        _context.Enrolments.Add(enrolment);
-        await _context.SaveChangesAsync();
+        var response = await client.PostAsJsonAsync(
+            "api/Enrolments", payload);
 
-        return Ok(enrolment);
+        if (!response.IsSuccessStatusCode)
+        {
+            ModelState.AddModelError("",
+                await response.Content.ReadAsStringAsync());
+
+            return View(model);
+        }
+
+        TempData["Success"] = "You have successfully enrolled in the event.";
+
+        return RedirectToAction("My");
     }
 
-    [HttpGet("my")]
-    [Authorize(Roles = "Participant")]
-    public async Task<IActionResult> GetMyEnrolments()
+    // Participant views their enrolments
+    public async Task<IActionResult> My()
     {
-        var enrolments = await _context.Enrolments
-            .AsNoTracking()
-            .Include(e => e.Event)
-            .Include(e => e.Category)
-            .Where(e => e.UserID == CurrentUserID)
-            .Select(e => new
-            {
-                e.EnrolmentID,
-                EventName = e.Event!.Name,
-                e.EventID,
-                Category = e.Category!.CategoryName,
-                e.EnrolmentDate
-            })
-            .ToListAsync();
+        if (HttpContext.Session.GetString("Role") != "Participant")
+            return RedirectToAction("Login", "Auth");
 
-        return Ok(enrolments);
+        var client = GetApiClient();
+
+        var response = await client.GetAsync("api/Enrolments/my");
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ViewBag.Error = "Unable to load your enrolments.";
+            return View(new List<MyEnrolment>());
+        }
+
+        var enrolments =
+            await response.Content.ReadFromJsonAsync<List<MyEnrolment>>();
+
+        return View(enrolments ?? new List<MyEnrolment>());
     }
 
-    [HttpGet("event/{eventId:int}")]
-    [Authorize(Roles = "Organiser")]
-    public async Task<IActionResult> GetEventEnrolments(int eventId)
+    // Organiser views enrolments for a specific event
+    public async Task<IActionResult> Event(int eventId)
     {
-        var eventItem = await _context.Events
-            .SingleOrDefaultAsync(e => e.EventID == eventId);
+        if (HttpContext.Session.GetString("Role") != "Organiser")
+            return RedirectToAction("Login", "Auth");
 
-        if (eventItem == null)
-            return NotFound("Event not found.");
+        var client = GetApiClient();
 
-        if (eventItem.OrganiserID != CurrentUserID)
-            return Forbid();
+        var response = await client.GetAsync(
+            $"api/Enrolments/event/{eventId}");
 
-        var enrolments = await _context.Enrolments
-            .AsNoTracking()
-            .Include(e => e.Participant)
-            .Include(e => e.Category)
-            .Where(e => e.EventID == eventId)
-            .Select(e => new
-            {
-                e.EnrolmentID,
-                e.UserID,
-                Participant = e.Participant!.FirstName + " " + e.Participant.LastName,
-                e.Category!.CategoryName,
-                e.EnrolmentDate
-            })
-            .ToListAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            TempData["Error"] = "Unable to load event enrolments.";
+            return RedirectToAction("Index", "Events");
+        }
 
-        return Ok(enrolments);
+        var enrolments =
+            await response.Content.ReadFromJsonAsync<List<EventEnrolment>>();
+
+        ViewBag.EventID = eventId;
+
+        return View(enrolments ?? new List<EventEnrolment>());
     }
+}
+
+public class MyEnrolment
+{
+    public int EnrolmentID { get; set; }
+    public string EventName { get; set; } = "";
+    public int EventID { get; set; }
+    public string Category { get; set; } = "";
+    public DateTime EnrolmentDate { get; set; }
+}
+
+public class EventEnrolment
+{
+    public int EnrolmentID { get; set; }
+    public int UserID { get; set; }
+    public string Participant { get; set; } = "";
+    public string CategoryName { get; set; } = "";
+    public DateTime EnrolmentDate { get; set; }
 }

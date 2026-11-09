@@ -1,132 +1,245 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using RaceDay.API.Data;
-using RaceDayAPI.DTOs;
-using RaceDay.API.Models;
-using System.Security.Claims;
+using RaceDayMVC.Models;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
-namespace RaceDayAPI.Controllers;
+namespace RaceDayMVC.Controllers;
 
-[ApiController]
-[Route("api/[controller]")]
-public class EventsController : ControllerBase
+public class EventsController : Controller
 {
-    private readonly RaceDayContext _context;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public EventsController(RaceDayContext context)
+    public EventsController(IHttpClientFactory httpClientFactory)
     {
-        _context = context;
+        _httpClientFactory = httpClientFactory;
     }
 
-    private int CurrentUserID =>
-        int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private HttpClient GetApiClient()
+    {
+        var client = _httpClientFactory.CreateClient("RaceDayApi");
 
-    private static bool ValidEventType(string type) =>
-        new[] { "Run", "Walk", "Cycle" }
-            .Contains(type, StringComparer.OrdinalIgnoreCase);
+        var token = HttpContext.Session.GetString("JWT");
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return client;
+    }
+
+    private bool IsOrganiser()
+    {
+        return HttpContext.Session.GetString("Role") == "Organiser";
+    }
+
+    public async Task<IActionResult> Index()
+    {
+        if (string.IsNullOrEmpty(HttpContext.Session.GetString("JWT")))
+            return RedirectToAction("Login", "Auth");
+
+        try
+        {
+            var response = await GetApiClient().GetAsync("api/Events");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                ViewBag.Error = "Unable to load events: " +
+                    await response.Content.ReadAsStringAsync();
+
+                return View(new List<EventItem>());
+            }
+
+            var events = await response.Content
+                .ReadFromJsonAsync<List<EventItem>>();
+
+            return View(events ?? new List<EventItem>());
+        }
+        catch (HttpRequestException)
+        {
+            ViewBag.Error = "Could not connect to the RaceDay API.";
+            return View(new List<EventItem>());
+        }
+    }
 
     [HttpGet]
-    [Authorize]
-    public async Task<IActionResult> GetEvents()
+    public IActionResult Create()
     {
-        var events = await _context.Events
-            .AsNoTracking()
-            .OrderBy(e => e.Date)
-            .ToListAsync();
+        if (!IsOrganiser())
+            return RedirectToAction("Login", "Auth");
 
-        return Ok(events);
-    }
-
-    [HttpGet("{id:int}")]
-    [Authorize]
-    public async Task<IActionResult> GetEvent(int id)
-    {
-        var item = await _context.Events
-            .AsNoTracking()
-            .SingleOrDefaultAsync(e => e.EventID == id);
-
-        return item == null ? NotFound() : Ok(item);
+        return View(new EventViewModel());
     }
 
     [HttpPost]
-    [Authorize(Roles = "Organiser")]
-    public async Task<IActionResult> CreateEvent(EventDto dto)
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Create(EventViewModel model)
     {
-        if (!ValidEventType(dto.EventType))
-            return BadRequest("Event type must be Run, Walk or Cycle.");
+        if (!IsOrganiser())
+            return RedirectToAction("Login", "Auth");
 
-        if (dto.EventDate <= DateTime.UtcNow)
-            return BadRequest("Event date must be in the future.");
+        if (!ModelState.IsValid)
+            return View(model);
 
-        var item = new Event
+        var payload = new
         {
-            Name = dto.Name.Trim(),
-            Description = dto.Description.Trim(),
-            Date = dto.EventDate,
-            Location = dto.Location.Trim(),
-            Distance = dto.Distance,
-            EventType = dto.EventType.Trim(),
-            OrganiserID = CurrentUserID
+            model.Name,
+            model.Description,
+            EventDate = model.EventDate,
+            model.Location,
+            model.Distance,
+            model.EventType
         };
 
-        _context.Events.Add(item);
-        await _context.SaveChangesAsync();
+        try
+        {
+            var response = await GetApiClient()
+                .PostAsJsonAsync("api/Events", payload);
 
-        return CreatedAtAction(
-            nameof(GetEvent),
-            new { id = item.EventID },
-            item);
+            if (!response.IsSuccessStatusCode)
+            {
+                ModelState.AddModelError("",
+                    await response.Content.ReadAsStringAsync());
+
+                return View(model);
+            }
+
+            TempData["Success"] = "Event created successfully!";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (HttpRequestException)
+        {
+            ModelState.AddModelError("", "Unable to connect to the API.");
+            return View(model);
+        }
     }
 
-    [HttpPut("{id:int}")]
-    [Authorize(Roles = "Organiser")]
-    public async Task<IActionResult> UpdateEvent(
-        int id, EventDto dto)
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id)
     {
-        if (!ValidEventType(dto.EventType))
-            return BadRequest("Event type must be Run, Walk or Cycle.");
+        if (!IsOrganiser())
+            return RedirectToAction("Login", "Auth");
 
-        var item = await _context.Events
-            .SingleOrDefaultAsync(e => e.EventID == id);
+        try
+        {
+            var response = await GetApiClient()
+                .GetAsync($"api/Events/{id}");
 
-        if (item == null)
-            return NotFound();
+            if (!response.IsSuccessStatusCode)
+            {
+                TempData["Error"] = "Unable to find the selected event.";
+                return RedirectToAction(nameof(Index));
+            }
 
-        if (item.OrganiserID != CurrentUserID)
-            return Forbid();
+            var item = await response.Content.ReadFromJsonAsync<EventItem>();
 
-        item.Name = dto.Name.Trim();
-        item.Description = dto.Description.Trim();
-        item.Date = dto.EventDate;
-        item.Location = dto.Location.Trim();
-        item.Distance = dto.Distance;
-        item.EventType = dto.EventType.Trim();
+            if (item == null)
+                return NotFound();
 
-        await _context.SaveChangesAsync();
+            var model = new EventViewModel
+            {
+                EventID = item.EventID,
+                Name = item.Name,
+                Description = item.Description,
+                EventDate = item.Date,
+                Location = item.Location,
+                Distance = item.Distance,
+                EventType = item.EventType
+            };
 
-        return Ok(item);
+            return View(model);
+        }
+        catch (HttpRequestException)
+        {
+            TempData["Error"] = "Unable to connect to the API.";
+            return RedirectToAction(nameof(Index));
+        }
     }
 
-    [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Organiser")]
-    public async Task<IActionResult> DeleteEvent(int id)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(EventViewModel model)
     {
-        var item = await _context.Events
-            .SingleOrDefaultAsync(e => e.EventID == id);
+        if (!IsOrganiser())
+            return RedirectToAction("Login", "Auth");
 
-        if (item == null)
-            return NotFound();
+        if (!ModelState.IsValid)
+            return View(model);
 
-        if (item.OrganiserID != CurrentUserID)
-            return Forbid();
+        var payload = new
+        {
+            model.Name,
+            model.Description,
+            EventDate = model.EventDate,
+            model.Location,
+            model.Distance,
+            model.EventType
+        };
 
-        if (await _context.Enrolments.AnyAsync(e => e.EventID == id))
-            return Conflict("An event with enrolments cannot be deleted.");
+        try
+        {
+            var response = await GetApiClient()
+                .PutAsJsonAsync($"api/Events/{model.EventID}", payload);
 
-        _context.Events.Remove(item);
-        await _context.SaveChangesAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                ModelState.AddModelError("",
+                    await response.Content.ReadAsStringAsync());
 
-        return NoContent();
+                return View(model);
+            }
+
+            TempData["Success"] = "Event updated successfully!";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (HttpRequestException)
+        {
+            ModelState.AddModelError("", "Unable to connect to the API.");
+            return View(model);
+        }
     }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(int id)
+    {
+        if (!IsOrganiser())
+            return RedirectToAction("Login", "Auth");
+
+        try
+        {
+            var response = await GetApiClient()
+                .DeleteAsync($"api/Events/{id}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                TempData["Error"] =
+                    await response.Content.ReadAsStringAsync();
+            }
+            else
+            {
+                TempData["Success"] = "Event deleted successfully!";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            TempData["Error"] = "Unable to connect to the API.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+}
+
+public class EventItem
+{
+    public int EventID { get; set; }
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public DateTime Date { get; set; }
+    public string Location { get; set; } = "";
+    public decimal Distance { get; set; }
+    public string EventType { get; set; } = "";
+    public string? BannerUrl { get; set; }
 }
